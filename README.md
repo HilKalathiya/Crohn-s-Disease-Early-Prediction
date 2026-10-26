@@ -1,21 +1,26 @@
-# CrohnSight: AI-based early detection and severity grading of Crohn's disease
+# CrohnSight
 
-Minor Project 2026-27, Pandit Deendayal Energy University (PDEU) · *AI-Based Early Prediction of Crohn's Disease Severity Using Machine Learning*
-Hil Kalathiya (23BIT092) · Sahaj Saliya (23BIT128) · Guide: Prof. Dr. Babalu Kumar Singh
+**Finds Crohn's disease lesions in capsule-endoscopy frames and videos, grades how severe they are, and shows where the model looked. It runs offline on an ordinary laptop CPU.**
 
-CrohnSight reads small-bowel **capsule-endoscopy** frames and videos, finds Crohn's lesions, grades their severity and shows where the lesion is with a heat-map. Two add-ons cover the rest of IBD: an **ulcerative-colitis Mayo grader** for colonoscopy images and a **flare-risk forecaster** from visit data. Everything runs offline on an ordinary CPU.
+[Run it](#run-it) · [Results](#results) · [How it works](#how-it-works) · [Project guide](docs/PROJECT_GUIDE.md) · [Development log](docs/DEVELOPMENT_LOG.md)
+
+![The CrohnSight Lesion Analyzer grading an ulcer in a Kvasir-Capsule frame: 96.7% lesion probability, 10 of 10 models agree, moderate severity, with a heat-map over the lesion](docs/images/lesion-analyzer.jpg)
+
+| 0.992 | 96.7% | 0.94 | 0.944 |
+| :---: | :---: | :---: | :---: |
+| Lesion vs normal AUROC,<br>CrohnIPI 5-fold CV | Lesion vs normal accuracy<br>(best published: 94.6%) | Severity agreement,<br>quadratic weighted kappa | AUROC on Kvasir-Capsule,<br>a dataset it never trained on |
 
 > **Research prototype. Not a medical device.** Do not use it to diagnose or treat anyone.
 
-**Full explanation:** [`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md) (methods, every result, problems and fixes, code map, viva Q&A). Development diary: [`docs/DEVELOPMENT_LOG.md`](docs/DEVELOPMENT_LOG.md).
+## Why
 
----
+A capsule endoscopy study is tens of thousands of frames, and a gastroenterologist reads every one looking for lesions that can be a few millimetres wide. CrohnSight scores each frame, ranks a study so the most suspicious frames come first, grades severity on a four-step scale, and draws a heat-map so a reader can check *why* a frame was flagged. Two add-ons cover the rest of inflammatory bowel disease: an **ulcerative colitis Mayo grader** for colonoscopy images and a **flare-risk forecaster** for follow-up visits.
 
 ## Results
 
-Final Crohn's model: **10 × EfficientNet-B2** (5 folds × 2 seeds) at the native 320 px, trained 40 epochs on an RTX 3050 laptop GPU, exported to ONNX.
+Final Crohn's model: **10 × EfficientNet-B2** (5 folds × 2 seeds) at the native 320 px, trained 40 epochs on an RTX 3050 laptop GPU and exported to ONNX.
 
-**CrohnIPI** (France), official 5-fold cross-validation, out-of-fold:
+**CrohnIPI** (France), official 5-fold cross-validation, out-of-fold predictions:
 
 | Measure | CrohnSight | Best published |
 | --- | --- | --- |
@@ -24,33 +29,46 @@ Final Crohn's model: **10 × EfficientNet-B2** (5 folds × 2 seeds) at the nativ
 | 7-class accuracy | **91.1%** (balanced 84.0%) | — |
 | 4-tier severity, quadratic weighted kappa | **0.94** (97.7% within one tier) | — |
 
-**External tests, no retraining** (other countries, other capsule brands):
+<p align="center"><img src="docs/figures/fig_benchmark_crohnipi.png" alt="Lesion vs normal accuracy on the official CrohnIPI folds: published models 93.7% to 94.6%, CrohnSight EfficientNet-B2 ensemble 96.7%" width="88%"></p>
+
+**External tests with no retraining** (other countries, other capsule brands):
 
 | Dataset | Result |
 | --- | --- |
 | Kvasir-Capsule (Norway), all 47,238 labelled frames | Inflammatory vs normal AUROC **0.944** (CI 0.86–0.98); ulcer 0.989, erosion 0.920, erythema 0.785 |
 | SEE-AI (Japan) | Erosion **0.897**, stenosis **0.916**, erythema **0.897** |
-| Heat-map hits the expert's lesion box | Kvasir 69% (chance 4%), SEE-AI stenosis 93% (chance 55%) |
+| Heat-map peak lands in the expert's lesion box | Kvasir 69% (chance 4%), SEE-AI stenosis 93% (chance 55%) |
 
-**Two operating modes** (both cut-offs fixed on CrohnIPI before any external test):
+<p align="center"><img src="docs/figures/fig_external_roc.png" alt="ROC curves on the external datasets: Kvasir-Capsule ulcer 0.989, erosion 0.920, erythema 0.785; SEE-AI stenosis 0.916, erosion 0.897, erythema 0.897" width="88%"></p>
+
+<details>
+<summary><b>Heat-map examples, including a miss</b></summary>
+<br>
+<img src="docs/figures/fig_cam_examples.png" alt="Four external frames with the expert's lesion box and the model's heat-map. Three peaks fall inside the box; the fourth ulcer is scored correctly but the heat-map peak falls outside the box." width="100%">
+</details>
+
+**Two operating modes.** Both cut-offs were fixed on CrohnIPI before any external test.
 
 | Mode | Cut-off | Kvasir lesion frames caught | Kvasir normal frames flagged |
 | --- | --- | --- | --- |
 | Balanced | 0.50 | 79.4% | 2.6% |
 | Screening | 0.31 | 93.4% | 31.6% |
 
-**Known limits, reported openly:** telling a whole lesion video from a lesion-free one is near chance (study AUROC 0.57); the UC grader drops from 0.943 (LIMUC) to 0.746 on a new hospital (HyperKvasir); the flare model ties the HBI-only baseline (AUROC 0.711). Experiments that did not work (hard negatives, quality filter) are documented in the guide, section 9.
+**Known limits.**
+- Telling a whole lesion video from a lesion-free one is near chance (study-level AUROC 0.57).
+- The UC grader drops from 0.943 on LIMUC to 0.746 on a new hospital (HyperKvasir).
+- The flare model ties the HBI-only baseline (AUROC 0.711).
 
-Reproduce the CrohnIPI numbers from the saved out-of-fold predictions (needs the CrohnIPI CSV, see Data):
+Experiments that did not work, such as hard negatives and a quality filter, are written up in the [project guide](docs/PROJECT_GUIDE.md), section 9.
+
+To reproduce the CrohnIPI numbers from the saved out-of-fold predictions (needs the CrohnIPI CSV, see [Data](#data)):
 
 ```bash
 cd gpu
 python evaluate_oof.py --runs ../results/b2_oof/seed0 ../results/b2_oof/seed1
 ```
 
----
-
-## Run the app
+## Run it
 
 Python 3.10+ on Windows, macOS or Linux. No GPU, PyTorch or internet needed.
 
@@ -64,16 +82,27 @@ Or with Docker: `cd app && docker compose up -d --build` (see [`app/DOCKER.md`](
 
 | Page | What it does |
 | --- | --- |
-| Lesion Analyzer | One frame → 7 lesion classes, severity tier, heat-map, how many of the 10 models agree |
-| Study Triage | Many frames or a .zip → most-suspicious-first reading list, Balanced / Screening switch |
-| Video Scan | **Scan your own capsule video** (upload it, or copy it into `app/user_videos/`), plus 43 Kvasir studies scanned offline |
-| UC Grader | Colonoscopy image → Mayo 0–3 |
+| Lesion Analyzer | One frame in: 7 lesion classes, severity tier, heat-map, and how many of the 10 models agree |
+| Study Triage | Many frames or a .zip in: a most-suspicious-first reading list, with a Balanced / Screening switch |
+| Video Scan | Scan your own capsule video (upload it, or copy it into `app/user_videos/`), plus 43 Kvasir studies scanned offline |
+| UC Grader | Colonoscopy image in: Mayo score 0–3 |
 | Flare Risk | HMP2 patient timelines and a what-if flare calculator |
 | Results, Data & Methods | Every number, including the negative results |
 
-Video decoding uses OpenCV if installed, otherwise the ffmpeg bundled with `imageio-ffmpeg` (in `requirements.txt`).
+Video decoding uses OpenCV if it is installed, otherwise the ffmpeg bundled with `imageio-ffmpeg`.
 
----
+## How it works
+
+```
+capsule frame ─▶ 320 px, normalise ─▶ 10 × EfficientNet-B2 (ONNX) ─▶ 7 lesion classes ─▶ severity tier
+                                                    └──────────────▶ class-activation heat-map + model agreement
+```
+
+- **Ensemble.** Five cross-validation folds × two seeds. Each network is fine-tuned on a different 80% of the 3,484 expert-labelled CrohnIPI frames, and the app averages all ten.
+- **Severity.** Class probabilities are summed inside each tier (none, mild, moderate, severe). That makes the grade ordinal, which is why it is scored with weighted kappa.
+- **Explainability.** Class-activation maps come out of the ONNX graph, so the heat-map costs nothing extra at inference.
+- **Honest evaluation.** Thresholds are chosen on other folds (cross-fitting), and recipes were fixed before scoring. External datasets were touched only once the model was final.
+- **Deployment.** FastAPI serves the ONNX models with onnxruntime on CPU, and a pre-built Next.js site is the UI. There is no PyTorch at runtime.
 
 ## Repository layout
 
@@ -83,14 +112,12 @@ gpu/            GPU training and evaluation (PyTorch): train_gpu.py, evaluate_oo
 ml/             first-phase training code (cloud CPU): linear probes, v1/v2 fine-tuning, flare model, ONNX export
 ml_device/      laptop scripts (onnxruntime): features, UC/findings heads, external tests, video scans, results summary
 results/        every metric as JSON; out-of-fold predictions of the final model in results/b2_oof/
-docs/           project guide and development log
+docs/           project guide, development log and figures
 ```
-
----
 
 ## Data
 
-No dataset is included (licences and size). Download them yourself and place them in a folder named `temorary solution` **next to** this repository folder (the scripts use that name):
+No dataset is included, because of licences and size. Download them yourself and place them in a folder named `temorary solution` **next to** this repository folder (the scripts use that name):
 
 | Dataset | Where | Licence | Used for |
 | --- | --- | --- | --- |
@@ -103,11 +130,15 @@ No dataset is included (licences and size). Download them yourself and place the
 
 Exact folder names are listed in the guide, section 12.7.
 
+## Team
+
+Built by [Hil Kalathiya](https://github.com/HilKalathiya) and [Sahaj Saliya](https://github.com/SahajIVVIX-1) as the 2026–27 Minor Project at Pandit Deendayal Energy University (PDEU), *AI-Based Early Prediction of Crohn's Disease Severity Using Machine Learning*. Guided by Prof. Dr. Babalu Kumar Singh.
+
 ## Licences and use
 
 * **Code and documentation:** [MIT License](LICENSE), © 2026 Hil Kalathiya, Sahaj Saliya and Chetan Gadhiya.
-* **Trained model weights and derived results:** non-commercial research and teaching only, with attribution, no clinical use; see [MODELS_LICENSE.md](MODELS_LICENSE.md). They are derived from CrohnIPI (CC BY-NC-ND, research use only) and the other datasets, so the MIT licence does not apply to them.
-* **Sample images** (`app/samples/`): from Kvasir-Capsule, HyperKvasir and LIMUC (CC BY 4.0), shown with attribution. Research-use-only images (CrohnIPI, SEE-AI) are not included; the app skips them when absent.
+* **Trained model weights and derived results:** non-commercial research and teaching only, with attribution, and no clinical use. See [MODELS_LICENSE.md](MODELS_LICENSE.md). They are derived from CrohnIPI (CC BY-NC-ND, research use only) and the other datasets, so the MIT licence does not apply to them.
+* **Sample images** (`app/samples/`) come from Kvasir-Capsule, HyperKvasir and LIMUC (CC BY 4.0) and are shown with attribution. Research-use-only images (CrohnIPI, SEE-AI) are not included, and the app skips them when they are absent.
 * **Not a medical device.** Research prototype only.
 
 ## Citation of the data
